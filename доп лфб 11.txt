@@ -1,0 +1,24 @@
+дядя степа для горящей птички (**>)
+
+для множественной вставки:
+Используем EXECUTE BLOCK
+пример:
+execute block
+as
+begin
+  insert into agent (id_ag, name_ag, town, phone)
+  values ('ag001', 'ООО Рога и копыта', 'Москва', '1234567890');
+  
+  insert into agent (id_ag, name_ag, town, phone)
+  values ('ag002', 'ип сидоров', 'Ростов', '0987654321');
+  
+  insert into agent (id_ag, name_ag, town, phone)
+  values ('ag003', 'ZaO "Строймаш"', 'Казань', '1112233445');
+end;
+
+--создание таблицы
+
+CREATE TABLE MYTABLE (
+    PK_MYTABLE INTEGER NOT NULL PRIMARY KEY,
+    VAL VARCHAR(50)
+);

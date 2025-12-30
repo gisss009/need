@@ -1,0 +1,252 @@
+--task1
+--a
+CREATE OR ALTER trigger bi_agent for agent
+active before insert position 0
+as
+begin
+    NEW.NAME_AG = UPPER(NEW.NAME_AG);
+end
+
+--b
+CREATE OR ALTER TRIGGER BU_AGENT FOR AGENT
+ACTIVE BEFORE UPDATE POSITION 0
+AS
+begin
+  new.name_ag = upper(new.name_ag);
+end
+
+
+--task2
+--создали Exceptions 2|ERROR_PAY|'запрещено\_(^-^)_/'|
+--триггер
+CREATE OR ALTER trigger au_sotr for sotr
+active after update position 0
+as
+begin
+if (NEW.PAY<OLD.PAY) then
+begin
+insert into log_file (INFORM)
+values('ERROR_PAY');
+exception ERROR_PAY;
+end
+end
+-------------------------
+--task2
+CREATE OR ALTER trigger au_pay_less for mytable
+active after update position 0
+as
+DECLARE log_message VARCHAR(200);
+begin
+if (NEW.PAY<OLD.PAY) then
+    begin
+    log_message = 'Попытка уменьшить оклад сотрудника ' ;
+    insert into log_file (INFORM) values('log_messagelog_message');
+    exception ERROR_PAY;//без этого работает, иначе ничего не пишет
+    end
+end	
+
+--task3
+--Первоначальный вариант:
+CREATE OR ALTER TRIGGER BI_MYTABLE FOR MYTABLE
+ACTIVE BEFORE INSERT POSITION 0
+AS
+BEGIN
+  NEW.PK_MYTABLE = GEN_ID(GEN_PK, 1);
+END
+--Нужный вариант:
+--убираем проверку рубчной вставки:
+CREATE OR ALTER TRIGGER BI_MYTABLE FOR MYTABLE
+ACTIVE BEFORE INSERT POSITION 0
+AS
+BEGIN
+  NEW.PK_MYTABLE = GEN_ID(GEN_PK, 1);
+END
+--можно конечно еще усложнить, делая проверку на наличие и для ручного формата и для автомачисекого,
+--но это... грустно(
+
+
+--task4
+create or alter trigger update_op_price for operation
+active after update position 0
+as
+begin
+  if (new.price is distinct from old.price) then
+  begin
+    insert into log_file (inform, user_name, ddata)
+    values (
+      'Операция ' || new.id || 
+      ': цена изменена с ' || old.price || 
+      ' на ' || new.price,
+      current_user,
+      current_date
+    );
+  end
+end
+
+
+--task5
+CREATE OR ALTER TRIGGER BIU_ORDERS FOR ORDERS
+ACTIVE BEFORE INSERT OR UPDATE POSITION 0
+as
+declare variable s numeric;
+begin
+    :s = (select sum(cost) from services where id_acc = new.acc);
+    
+    if (s is not null) then
+        new.summa = s;
+    else
+        new.summa = 0;
+end
+
+(Да, можно без указания точности:
+
+```sql
+create or alter trigger biu_orders for orders
+active before insert or update position 0
+as
+declare variable s numeric;  -- без точности
+begin
+    select sum(cost)
+    from services
+    where id_acc = new.acc
+    into :s;
+    
+    if (s is not null) then
+        new.summa = s;
+    else
+        new.summa = 0;
+end
+```
+
+В Firebird:
+- `numeric` без указания точности = `numeric(18,0)` (целые числа)
+- `decimal` без указания точности = `decimal(18,0)`
+
+**Но лучше указать точность для денежных значений:**
+
+```sql
+declare variable s numeric(15,2);  -- 15 цифр всего, 2 после запятой
+```
+
+Без точности могут быть проблемы с округлением при расчетах.)
+
+--task6
+
+CREATE OR ALTER TRIGGER BIUD_SERVICES FOR SERVICES
+ACTIVE AFTER INSERT OR UPDATE OR DELETE POSITION 0
+as
+declare variable acc_id integer;
+declare variable total_sum numeric;
+begin
+    if (inserting or updating) then
+        acc_id = new.id_acc;
+    else if (deleting) then
+        acc_id = old.id_acc;
+    
+    select coalesce(sum(cost), 0)
+    from services
+    where id_acc = :acc_id
+    into :total_sum;
+    
+    update orders
+    set summa = :total_sum
+    where acc = :acc_id;
+end
+
+--task7
+CREATE OR ALTER TRIGGER CHECK_GOODS_EXPORT FOR OPERATION
+ACTIVE BEFORE INSERT OR UPDATE POSITION 0
+as
+declare variable goods_exists integer;
+declare variable wh_exists integer;
+declare variable stock_qty numeric;
+begin
+    if (new.typeop = 'R') then
+    begin
+         :goods_exists = (select 1 from goods
+        where id_goods = new.id_goods);
+        
+        if (goods_exists is null) then
+            exception tovar_null;
+        
+        :wh_exists = (select 1 from warehouse
+        where id_wh = new.id_wh);
+        
+        if (wh_exists is null) then
+            exception wh_null;
+        
+        :stock_qty = (select quantity from goods_wh
+        where id_goods = new.id_goods
+          and id_wh = new.id_wh);
+        
+        if (stock_qty is null) then
+            exception tovar_dont_in_warehouse;
+        
+        if (stock_qty < new.quantity) then
+            exception tovar_less_in_wh;
+    end
+end
+
+--task8
+CREATE OR ALTER TRIGGER UPDATE_GOODS_WH FOR OPERATION
+ACTIVE AFTER INSERT POSITION 0
+as
+declare variable existing_qty numeric(15,2);
+begin
+    if (new.typeop = 'А') then
+    begin
+        :existing_qty = (select quantity
+        from goods_wh 
+        where id_goods = new.id_goods 
+          and id_wh = new.id_wh);
+        
+        if (existing_qty is not null) then
+        begin
+            update goods_wh
+            set quantity = quantity + new.quantity
+            where id_goods = new.id_goods 
+              and id_wh = new.id_wh;
+        end
+
+        else
+        begin
+            insert into goods_wh (id_wh, id_goods, quantity)
+            values (new.id_wh, new.id_goods, new.quantity);
+        end
+    end
+end
+
+--task9
+CREATE OR ALTER TRIGGER BA_REQ FOR REQUESTOR
+ACTIVE BEFORE INSERT OR UPDATE POSITION 0
+as
+begin
+    if (new.lookup_id is not null 
+        and not exists(select * from lookup where l_id = new.lookup_id)) then
+        exception not_valid;
+end		
+---
+CREATE OR ALTER TRIGGER BA_L FOR LOOKUP
+ACTIVE BEFORE DELETE POSITION 0
+as
+begin
+    if (exists(select * from requestor where lookup_id = old.l_id)) then
+        exception not_valid;
+end
+--каскад 9
+CREATE OR ALTER TRIGGER CASCADE_LOOKUP_UPDATE FOR LOOKUP
+ACTIVE AFTER UPDATE POSITION 0
+as
+begin
+    if (old.l_id is distinct from new.l_id) then
+    begin
+        update requestor
+        set lookup_id = new.l_id
+        where lookup_id = old.l_id;
+    end
+end
+
+
+
+
+
